@@ -280,6 +280,11 @@ let virtual = {
   serverBuild: VirtualModule.create("server-build"),
   serverManifest: VirtualModule.create("server-manifest"),
   browserManifest: VirtualModule.create("browser-manifest"),
+  // Entry file virtual modules
+  rootRoute: VirtualModule.create("root"),
+  routes: VirtualModule.create("routes"),
+  entryClient: VirtualModule.create("entry.client"),
+  entryServer: VirtualModule.create("entry.server"),
 };
 
 let invalidateVirtualModules = (viteDevServer: Vite.ViteDevServer) => {
@@ -1971,6 +1976,18 @@ export const reactRouterVitePlugin: ReactRouterVitePlugin = () => {
             });
 
             return `window.__reactRouterManifest=${reactRouterManifestString};`;
+          }
+          case virtual.rootRoute.resolvedId: {
+            return `export * from ${JSON.stringify(ctx.reactRouterConfig.rootRouteFile)};`;
+          }
+          case virtual.routes.resolvedId: {
+            return `export { default } from ${JSON.stringify(ctx.reactRouterConfig.routesFile)};`;
+          }
+          case virtual.entryClient.resolvedId: {
+            return `export * from ${JSON.stringify(ctx.entryClientFilePath)};`;
+          }
+          case virtual.entryServer.resolvedId: {
+            return `export * from ${JSON.stringify(ctx.entryServerFilePath)};`;
           }
         }
       },
