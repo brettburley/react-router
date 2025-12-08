@@ -15,6 +15,7 @@ import type {
   RouterContext,
   RouterContextProvider,
 } from "./utils";
+import { getRoutePattern } from "./utils";
 
 // Public APIs
 export type unstable_ServerInstrumentation = {
@@ -40,7 +41,12 @@ export type unstable_InstrumentRouteFunction = (
 ) => void;
 
 export type unstable_InstrumentationHandlerResult =
-  | { status: "success"; error: undefined }
+  | {
+      status: "success";
+      error: undefined;
+      params?: LoaderFunctionArgs["params"];
+      unstable_pattern?: string;
+    }
   | { status: "error"; error: Error };
 
 // Shared
@@ -292,6 +298,7 @@ export function instrumentClientSideRouter(
           ...getRouterInfo(router, opts ?? {}),
         } satisfies RouterNavigationInstrumentationInfo;
       },
+      () => getNavigationResultInfo(router),
     ) as Router["navigate"];
     if (instrumentedNavigate) {
       // @ts-expect-error
@@ -363,6 +370,10 @@ function wrapImpl<T extends InstrumentationInfo>(
   impls: InstrumentFunction<T>[],
   handler: (...args: any[]) => MaybePromise<any>,
   getInfo: (...args: unknown[]) => T,
+  getResultInfo?: () => Pick<
+    unstable_InstrumentationHandlerResult & { status: "success" },
+    "params" | "unstable_pattern"
+  >,
 ) {
   if (impls.length === 0) {
     return null;
@@ -373,6 +384,7 @@ function wrapImpl<T extends InstrumentationInfo>(
       getInfo(...args),
       () => handler(...args),
       impls.length - 1,
+      getResultInfo,
     );
     if (result.type === "error") {
       throw result.value;
@@ -388,6 +400,10 @@ async function recurseRight<T extends InstrumentationInfo>(
   info: T,
   handler: () => MaybePromise<void>,
   index: number,
+  getResultInfo?: () => Pick<
+    unstable_InstrumentationHandlerResult & { status: "success" },
+    "params" | "unstable_pattern"
+  >,
 ): Promise<RecurseResult> {
   let impl = impls[index];
   let result: RecurseResult | undefined;
@@ -407,14 +423,21 @@ async function recurseRight<T extends InstrumentationInfo>(
         if (handlerPromise) {
           console.error("You cannot call instrumented handlers more than once");
         } else {
-          handlerPromise = recurseRight(impls, info, handler, index - 1);
+          handlerPromise = recurseRight(
+            impls,
+            info,
+            handler,
+            index - 1,
+            getResultInfo,
+          );
         }
         result = await handlerPromise;
         invariant(result, "Expected a result");
         if (result.type === "error" && result.value instanceof Error) {
           return { status: "error", error: result.value };
         }
-        return { status: "success", error: undefined };
+        let resultInfo = getResultInfo ? getResultInfo() : {};
+        return { status: "success", error: undefined, ...resultInfo };
       };
 
     try {
@@ -468,6 +491,17 @@ function getRouterInfo(
     ...("formEncType" in opts ? { formEncType: opts.formEncType } : {}),
     ...("formData" in opts ? { formData: opts.formData } : {}),
     ...("body" in opts ? { body: opts.body } : {}),
+  };
+}
+
+function getNavigationResultInfo(router: Router): {
+  params: LoaderFunctionArgs["params"];
+  unstable_pattern: string;
+} {
+  let matches = router.state.matches || [];
+  return {
+    params: matches[0]?.params ?? {},
+    unstable_pattern: getRoutePattern(matches),
   };
 }
 // Return a shallow readonly "clone" of the Request with the info they may

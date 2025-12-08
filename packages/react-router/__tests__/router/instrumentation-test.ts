@@ -1568,7 +1568,7 @@ describe("instrumentation", () => {
           },
           {
             id: "page",
-            path: "/page",
+            path: "/page/:id",
             loader: () => "PAGE",
           },
         ],
@@ -1579,8 +1579,8 @@ describe("instrumentation", () => {
                 router.instrument({
                   async navigate(navigate, info) {
                     spy("start", info);
-                    await navigate();
-                    spy("end", info);
+                    let result = await navigate();
+                    spy("end", info, result);
                   },
                 });
               },
@@ -1589,14 +1589,23 @@ describe("instrumentation", () => {
         },
       );
 
-      await router.navigate("/page");
+      await router.navigate("/page/123");
       expect(spy.mock.calls).toEqual([
-        ["start", { currentUrl: "/", to: "/page" }],
-        ["end", { currentUrl: "/", to: "/page" }],
+        ["start", { currentUrl: "/", to: "/page/123" }],
+        [
+          "end",
+          { currentUrl: "/", to: "/page/123" },
+          {
+            status: "success",
+            error: undefined,
+            params: { id: "123" },
+            unstable_pattern: "/page/:id",
+          },
+        ],
       ]);
       expect(router.state).toMatchObject({
         navigation: { state: "idle" },
-        location: { pathname: "/page" },
+        location: { pathname: "/page/123" },
         loaderData: { page: "PAGE" },
       });
     });
